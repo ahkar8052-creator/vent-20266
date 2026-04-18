@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Critical Care Heroes Simulator</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#00e5ff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ICU Heroes">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <script>
+      if ('serviceWorker' in navigator &&
+          location.protocol === 'https:' &&
+          !location.hostname.includes('claudeusercontent')) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js').catch(e => console.log(e));
+        });
+      }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+
+        :root {
+            --green:  #00ff88;
+            --cyan:   #00e5ff;
+            --yellow: #ffd600;
+            --red:    #ff1744;
+            --bg:     #05080a;
+            --panel:  #0d1218;
+            --border: #1e2d3d;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Cairo', sans-serif;
+            background: var(--bg);
+            color: white;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ===== SCREENS ===== */
+        .screen { display: none; height: 100vh; width: 100vw; justify-content: center; align-items: center; flex-direction: column; }
+        .screen.active { display: flex; }
+
+        /* ===== LOGIN ===== */
+        .login-card {
+            background: var(--panel); padding: 50px; border-radius: 25px;
+            border: 2px solid var(--cyan); text-align: center; width: 400px;
+            max-width: 92vw;
+            box-shadow: 0 0 30px rgba(0,229,255,.15);
+        }
+        .login-card h2 { color: var(--cyan); margin-bottom: 5px; }
+        .login-card p  { color: #7f8c8d; margin-bottom: 30px; }
+        .fixed-user {
+            background: #161e27; padding: 15px; border-radius: 10px;
+            color: var(--cyan); font-weight: bold; margin-bottom: 20px;
+            border: 1px dashed #34495e; font-size: 1.1rem;
+        }
+        .login-card input[type="password"] {
+            width: 100%; padding: 14px; margin: 10px 0; border-radius: 8px;
+            border: 1px solid var(--border); background: #1a242f; color: white;
+            text-align: center; font-size: 1rem; font-family: 'Cairo', sans-serif;
+        }
+        .login-card input:focus { outline: 1px solid var(--cyan); }
+        #loginError { color: var(--red); font-size: .85rem; min-height: 20px; margin-top: 6px; }
+
+        /* ===== BUTTONS ===== */
+        .btn-main {
+            cursor: pointer; background: var(--cyan); color: black;
+            border: none; padding: 14px; border-radius: 8px; font-weight: bold;
+            width: 100%; margin-top: 15px; transition: .3s; font-size: 1rem;
+            font-family: 'Cairo', sans-serif;
+        }
+        .btn-main:hover { background: var(--green); transform: translateY(-2px); }
+
+        /* ===== PATIENT SCREEN ===== */
+        #patientScreen { overflow-y: auto; justify-content: flex-start; padding: 30px 20px; }
+        #patientScreen h1 { color: var(--cyan); margin-bottom: 20px; text-align: center; }
+
+        .free-vent-btn {
+            background: #2c3e50; color: white; border: none;
+            padding: 15px 40px; border-radius: 10px; font-size: 1.1rem;
+            margin-bottom: 30px; cursor: pointer; font-family: 'Cairo', sans-serif;
+            transition: .3s; display: block; margin-left: auto; margin-right: auto;
+        }
+        .free-vent-btn:hover { background: #34495e; }
+
+        .patients-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 20px; width: 90%; max-width: 1000px;
+            max-height: 55vh; overflow-y: auto; padding-right: 10px;
+        }
+        @media(max-width: 700px) { .patients-grid { grid-template-columns: repeat(2,1fr); } }
+        @media(max-width: 450px) { .patients-grid { grid-template-columns: 1fr; } }
+
+        .patient-card {
+            background: var(--panel); padding: 30px; border-radius: 20px;
+            border: 1px solid var(--border); cursor: pointer; text-align: center;
+            transition: .3s; position: relative;
+        }
+        .patient-card:hover { border-color: var(--cyan); background: #141b24; transform: scale(1.03); }
+        .patient-card h3 { margin: 0 0 8px; font-size: 1.4rem; color: var(--cyan); }
+        .patient-card p  { color: #7f8c8d; margin: 0; font-size: .9rem; }
+
+        .add-card {
+            border: 2px dashed var(--cyan); background: transparent;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: var(--cyan);
+        }
+        .add-card:hover { background: rgba(0,229,255,.1); }
+        .add-card-plus { font-size: 3rem; line-height: 1; margin-bottom: 8px; }
+
+        .delete-btn {
+            position: absolute; top: 12px; left: 12px;
+            background: rgba(255,23,68,.1); color: var(--red);
+            border: 1px solid var(--red); border-radius: 5px;
+            padding: 4px 10px; font-size: .75rem; cursor: pointer;
+            transition: .3s; font-family: 'Cairo', sans-serif;
+        }
+        .delete-btn:hover { background: var(--red); color: white; }
+
+        .footer-btns { margin-top: 30px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+        .footer-btns button {
+            padding: 12px 35px; background: none; border-radius: 8px;
+            cursor: pointer; font-family: 'Cairo', sans-serif; font-size: .9rem;
+        }
+
+        /* ===== VENT SCREEN ===== */
+        #ventScreen { flex-direction: row; align-items: stretch; overflow: hidden; }
+        .vent-layout { display: grid; grid-template-columns: 360px 1fr; height: 100vh; width: 100%; }
+        @media(max-width: 900px) { .vent-layout { grid-template-columns: 280px 1fr; } }
+
+        .sidebar {
+            background: var(--panel); border-left: 1px solid var(--border);
+            padding: 20px; overflow-y: auto;
+        }
+        .sidebar h2 { color: var(--cyan); margin: 0 0 15px; text-align: center; }
+        .sidebar hr { border: 0; border-top: 1px solid var(--border); margin: 15px 0; }
+
+        .main-screen { padding: 15px; display: flex; flex-direction: column; gap: 12px; background: #000; overflow: hidden; }
+
+        .monitors { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; flex-shrink: 0; }
+        .mon-box { background: #080a0d; border: 1px solid #1a222c; padding: 12px; border-radius: 12px; text-align: center; }
+        .mon-label { font-size: .75rem; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; }
+        .mon-value { font-size: 2.8rem; font-weight: bold; color: var(--green); display: block; line-height: 1; margin-top: 5px; font-family: 'Courier New', monospace; }
+
+        .wave-box { flex: 1; background: #030507; border-radius: 8px; border: 1px solid #111; position: relative; min-height: 80px; }
+        .wave-box canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+
+        /* CONTROLS */
+        .sidebar-section-title { color: #bdc3c7; font-size: .9rem; margin-bottom: 5px; display: block; }
+        select {
+            width: 100%; padding: 10px; border-radius: 8px;
+            background: #1a242f; color: white; border: 1px solid #34495e;
+            font-family: 'Cairo', sans-serif; margin-bottom: 15px; font-size: .9rem;
+        }
+
+        .control-group { margin-bottom: 20px; }
+        .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .control-header label { font-size: .9rem; color: #c9d8e8; font-weight: bold; }
+        .val-badge {
+            background: #0a1520; border: 1px solid var(--cyan); color: var(--green);
+            padding: 3px 10px; border-radius: 8px; font-family: 'Courier New', monospace;
+            font-size: 1.3rem; font-weight: bold; min-width: 80px; text-align: center;
+        }
+        .val-unit { font-size: .7rem; color: #778; font-family: 'Cairo', sans-serif; font-weight: normal; }
+
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 8px; background: #1a2535; border-radius: 4px; }
+        input[type=range]::-webkit-slider-thumb { height: 22px; width: 22px; border-radius: 50%; background: var(--cyan); cursor: pointer; -webkit-appearance: none; margin-top: -7px; box-shadow: 0 0 10px rgba(0,229,255,.5); transition: .2s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); background: var(--green); }
+
+        .scen-box { margin-top: 15px; padding: 10px; border-radius: 8px; background: #0a1018; border: 1px solid var(--border); text-align: center; }
+        .scen-box strong { display: block; color: var(--cyan); margin-bottom: 4px; font-size: .8rem; }
+        .scen-box span { font-size: .95rem; color: #c9d8e8; font-weight: bold; }
+
+        .exit-btn { background: #b33939; color: white; border: 1px solid #ff5252; margin-top: 20px; }
+        .exit-btn:hover { background: #c0392b; }
+
+        /* ===== MODALS ===== */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 1000; justify-content: center; align-items: center; }
+        .modal.open { display: flex; }
+        .modal-content {
+            background: var(--panel); padding: 40px; border-radius: 20px;
+            width: 90%; max-width: 700px; max-height: 85vh; overflow-y: auto;
+            border: 1px solid var(--cyan); position: relative;
+        }
+        .modal-content.narrow { max-width: 420px; text-align: center; }
+        .modal-content h2 { margin-top: 0; }
+        .close-btn { position: absolute; top: 15px; left: 15px; color: white; cursor: pointer; font-size: 1.5rem; background: none; border: none; }
+        .modal-content input[type="text"] {
+            width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px;
+            border: 1px solid var(--border); background: #1a242f; color: white;
+            text-align: center; font-size: 1rem; font-family: 'Cairo', sans-serif;
+        }
+        .modal-content select { margin-top: 10px; }
+
+        .team-list { columns: 2; list-style: none; padding: 0; line-height: 2.2; }
+        @media(max-width: 500px) { .team-list { columns: 1; } }
+
+        /* SCROLLBAR */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #05080a; }
+        ::-webkit-scrollbar-thumb { background: #1a2535; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--cyan); }
+    </style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<section id="loginScreen" class="screen active">
+    <div class="login-card">
+        <h2>مرحبا بك في عالم محاكاة</h2>
+        <p>نظام التدريب المتقدم للرعاية الحرجة</p>
+        <div class="fixed-user">Critical Care Heroes</div>
+        <input type="password" id="passInput" placeholder="كلمة المرور"
+               autocomplete="off" onkeydown="if(event.key==='Enter') checkLogin()">
+        <div id="loginError"></div>
+        <button class="btn-main" onclick="checkLogin()">دخول للنظام</button>
+    </div>
+</section>
+
+<!-- ===== PATIENT SELECT ===== -->
+<section id="patientScreen" class="screen">
+    <h1>وحدة الرعاية المركزة (ICU)</h1>
+
+    <button class="free-vent-btn" onclick="initSimulation('جهاز محاكاة حر','normal')">
+        بدء جهاز محاكاة حر (Standard Vent)
+    </button>
+
+    <div class="patients-grid" id="patientsGrid">
+        <div class="patient-card" onclick="initSimulation('الحج محمد','normal')">
+            <h3>الحج محمد</h3><p>مستقر (Normal)</p>
+        </div>
+        <div class="patient-card" onclick="initSimulation('الحج علي','pneumo')">
+            <h3>الحج علي</h3><p>Pneumothorax</p>
+        </div>
+        <div class="patient-card" onclick="initSimulation('الحج كريم','copd')">
+            <h3>الحج كريم</h3><p>COPD / Asthma</p>
+        </div>
+        <div class="patient-card" onclick="initSimulation('الحج مصطفى','leak')">
+            <h3>الحج مصطفى</h3><p>Circuit Leak</p>
+        </div>
+        <div class="patient-card add-card" onclick="openModal('addPatientModal')">
+            <div class="add-card-plus">+</div>
+            <h3>اضافة مريض</h3>
+        </div>
+    </div>
+
+    <div class="footer-btns">
+        <button style="color:var(--cyan);border:1px solid var(--cyan);" onclick="openModal('thanksModal')">كلمة شكر</button>
+        <button style="color:var(--green);border:1px solid var(--green);" onclick="openModal('teamModal')">فريق العمل</button>
+    </div>
+</section>
+
+<!-- ===== VENT SCREEN ===== -->
+<section id="ventScreen" class="screen">
+    <div class="vent-layout">
+
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <h2 id="activePatient">-</h2>
+            <hr>
+
+            <span class="sidebar-section-title">السيناريو الطبي (Scenario)</span>
+            <select id="scenSelect" onchange="changeScenario()">
+                <option value="normal">حالة مستقرة (Normal)</option>
+                <option value="pneumo">استرواح هوائي (Pneumothorax)</option>
+                <option value="copd">انسداد شعبي (COPD / Asthma)</option>
+                <option value="leak">تسريب الدائرة (Circuit Leak)</option>
+                <option value="apnea">انقطاع النفس (Apnea)</option>
+            </select>
+
+            <span class="sidebar-section-title">نظام التنفس (Mode)</span>
+            <select id="modeSelect" onchange="changeMode()">
+                <option value="VC-AC">VC-AC (Volume Control)</option>
+                <option value="PC-AC">PC-AC (Pressure Control)</option>
+                <option value="SIMV">SIMV (Synchronized)</option>
+                <option value="CPAP">CPAP / PSV</option>
+            </select>
+
+            <h3 style="color:var(--cyan);margin-bottom:16px;font-size:1rem;border-bottom:1px solid var(--border);padding-bottom:8px;">
+                &#9881; اعدادات التهوية
+            </h3>
+
+            <div class="control-group" id="vtControl">
+                <div class="control-header">
+                    <label>Tidal Volume (Vt)</label>
+                    <div class="val-badge"><span id="vtVal">500</span> <span class="val-unit">mL</span></div>
+                </div>
+                <input type="range" id="vt" min="200" max="800" value="500" step="10" oninput="syncLabels()">
+            </div>
+
+            <div class="control-group" id="piControl" style="display:none;">
+                <div class="control-header">
+                    <label>Insp. Pressure (Pi)</label>
+                    <div class="val-badge"><span id="piVal">15</span> <span class="val-unit">cmH2O</span></div>
+                </div>
+                <input type="range" id="pi" min="5" max="40" value="15" oninput="syncLabels()">
+            </div>
+
+            <div class="control-group">
+                <div class="control-header">
+                    <label>Resp. Rate (RR)</label>
+                    <div class="val-badge"><span id="rrVal">14</span> <span class="val-unit">bpm</span></div>
+                </div>
+                <input type="range" id="rr" min="0" max="40" value="14" oninput="syncLabels()">
+            </div>
+
+            <div class="control-group">
+                <div class="control-header">
+                    <label>PEEP</label>
+                    <div class="val-badge"><span id="peepVal">5</span> <span class="val-unit">cmH2O</span></div>
+                </div>
+                <input type="range" id="peep" min="0" max="20" value="5" oninput="syncLabels()">
+            </div>
+
+            <div class="scen-box">
+                <strong>السيناريو النشط</strong>
+                <span id="scenText">Normal</span>
+            </div>
+
+            <button class="btn-main exit-btn" onclick="exitToPatients()">انهاء المحاكاة والعودة</button>
+        </div>
+
+        <!-- MAIN DISPLAY -->
+        <div class="main-screen">
+            <div class="monitors">
+                <div class="mon-box">
+                    <span class="mon-label">Ppeak (cmH2O)</span>
+                    <span id="monPeak" class="mon-value">0</span>
+                </div>
+                <div class="mon-box">
+                    <span class="mon-label">Vte (mL)</span>
+                    <span id="monVte" class="mon-value" style="color:var(--cyan)">0</span>
+                </div>
+                <div class="mon-box">
+                    <span class="mon-label">Flow (L/min)</span>
+                    <span id="monFlow" class="mon-value" style="color:var(--yellow)">0</span>
+                </div>
+            </div>
+            <div class="wave-box"><canvas id="pChart"></canvas></div>
+            <div class="wave-box"><canvas id="fChart"></canvas></div>
+            <div class="wave-box"><canvas id="vChart"></canvas></div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== MODAL: ADD PATIENT ===== -->
+<div id="addPatientModal" class="modal" onclick="closeModal('addPatientModal')">
+    <div class="modal-content narrow" onclick="event.stopPropagation()">
+        <button class="close-btn" onclick="closeModal('addPatientModal')">&times;</button>
+        <h2 style="color:var(--cyan);">تسجيل مريض جديد</h2>
+        <input type="text" id="newPatName" placeholder="اسم المريض (مثال: الحج محمود)" autocomplete="off">
+        <select id="newPatScen">
+            <option value="normal">حالة مستقرة</option>
+            <option value="pneumo">Pneumothorax</option>
+            <option value="copd">COPD / Asthma</option>
+            <option value="leak">تسريب الدائرة</option>
+            <option value="apnea">انقطاع النفس</option>
+        </select>
+        <div id="addPatError" style="color:var(--red);font-size:.85rem;min-height:18px;margin-top:6px;"></div>
+        <button class="btn-main" onclick="saveNewPatient()">حفظ وبدء المحاكاة</button>
+    </div>
+</div>
+
+<!-- ===== MODAL: THANKS ===== -->
+<div id="thanksModal" class="modal" onclick="closeModal('thanksModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <button class="close-btn" onclick="closeModal('thanksModal')">&times;</button>
+        <h2 style="color:var(--cyan);text-align:center;">شكر وتقدير</h2>
+        <p style="line-height:2;text-align:justify;font-size:1.05rem;">
+            اتقدم بخالص الشكر والتقدير الى الدكتورة / آلاء مصطفى على دعمها واشرافها الكريم، وعلى ما قدمته من توجيهات علمية قيمة كان لها بالغ الاثر في اتمام هذا العمل. كما اعرب عن امتناني لجهودها المستمرة وحرصها على اخراج هذا المشروع في افضل صورة.
+        </p>
+    </div>
+</div>
+
+<!-- ===== MODAL: TEAM ===== -->
+<div id="teamModal" class="modal" onclick="closeModal('teamModal')">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <button class="close-btn" onclick="closeModal('teamModal')">&times;</button>
+        <h2 style="color:var(--green);text-align:center;">فريق عمل المشروع</h2>
+        <ul class="team-list">
+            <li>احمد كرم احمد احمد منصور</li>
+            <li>احمد كمال شحاتة رزق ابراهيم</li>
+            <li>احمد محمد فتحي عبده البنا</li>
+            <li>احمد محمود احمد محمود</li>
+            <li>اسلام جابر عبد الهادي الغنيمي</li>
+            <li>اسلام مدحت احمد الشركسي</li>
+            <li>اسماء احمد حسن محمد عوض</li>
+            <li>اسماء سلامة شلبي عبده</li>
+            <li>اسماء علاء عبد الرازق الشيخ</li>
+            <li>اسماء فخري محمد ابراهيم السعدني</li>
+            <li>اسماء مدحت احمد عبد الحميد</li>
+            <li>هدى حمزة سعيد فرج</li>
+            <li>هدى عبد المنعم حامد عبد المولى</li>
+            <li>هدى فؤاد احمد عطية</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+let charts   = {};
+let simData  = { compliance: 50, resistance: 5, leak: 0, active: false };
+let isLoggedIn = false;
+
+// ============================================================
+//  SCREENS
+// ============================================================
+function switchScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+// ============================================================
+//  LOGIN
+// ============================================================
+function checkLogin() {
+    const pass = document.getElementById('passInput').value;
+    const err  = document.getElementById('loginError');
+    if (pass === '2026') {
+        err.textContent = '';
+        isLoggedIn = true;
+        document.getElementById('passInput').value = '';
+        switchScreen('patientScreen');
+    } else {
+        err.textContent = 'X كلمة المرور غير صحيحة';
+        document.getElementById('passInput').value = '';
+        document.getElementById('passInput').focus();
+    }
+}
+
+// ============================================================
+//  MODALS
+// ============================================================
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// close on ESC
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape')
+        document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+});
+
+// ============================================================
+//  PATIENTS
+// ============================================================
+function saveNewPatient() {
+    const name = document.getElementById('newPatName').value.trim();
+    const scen = document.getElementById('newPatScen').value;
+    const err  = document.getElementById('addPatError');
+    if (!name) { err.textContent = 'X يرجى ادخال اسم المريض'; return; }
+    err.textContent = '';
+
+    const grid    = document.getElementById('patientsGrid');
+    const addCard = grid.lastElementChild;   // كارت + دايما الاخير
+    const newCard = document.createElement('div');
+    newCard.className = 'patient-card';
+
+    const scenLabels = {
+        normal:'حالة مستقرة', pneumo:'Pneumothorax',
+        copd:'COPD / Asthma', leak:'تسريب الدائرة', apnea:'انقطاع النفس'
+    };
+    newCard.innerHTML = `
+        <button class="delete-btn" onclick="deletePatient(event,this)">حذف</button>
+        <h3>${name}</h3>
+        <p>${scenLabels[scen] || 'مريض مضاف'}</p>`;
+    newCard.addEventListener('click', () => initSimulation(name, scen));
+
+    grid.insertBefore(newCard, addCard);
+
+    document.getElementById('newPatName').value = '';
+    closeModal('addPatientModal');
+    initSimulation(name, scen);
+}
+
+function deletePatient(event, btn) {
+    event.stopPropagation();
+    if (confirm('هل انت متاكد من حذف هذا المريض؟')) {
+        btn.closest('.patient-card').remove();
+    }
+}
+
+// ============================================================
+//  SIMULATION
+// ============================================================
+function initSimulation(name, type) {
+    document.getElementById('activePatient').innerText = name;
+    document.getElementById('scenSelect').value = type;
+    simData.active = true;
+    changeScenario();
+    switchScreen('ventScreen');
+    setupCharts();
+    syncLabels();
+}
+
+function exitToPatients() {
+    simData.active = false;
+    switchScreen('patientScreen');
+}
+
+function changeMode() {
+    const mode = document.getElementById('modeSelect').value;
+    const isVC = mode.includes('VC') || mode === 'SIMV';
+    document.getElementById('vtControl').style.display = isVC ? 'block' : 'none';
+    document.getElementById('piControl').style.display = isVC ? 'none'  : 'block';
+}
+
+function changeScenario() {
+    const sel  = document.getElementById('scenSelect');
+    const type = sel.value;
+    document.getElementById('scenText').innerText = sel.options[sel.selectedIndex].text;
+
+    if      (type === 'pneumo') { simData.compliance=15;  simData.resistance=5;  simData.leak=0;   document.getElementById('rr').value=14; }
+    else if (type === 'copd')   { simData.compliance=55;  simData.resistance=35; simData.leak=0;   document.getElementById('rr').value=14; }
+    else if (type === 'leak')   { simData.compliance=50;  simData.resistance=5;  simData.leak=300; document.getElementById('rr').value=14; }
+    else if (type === 'apnea')  { simData.compliance=50;  simData.resistance=5;  simData.leak=0;   document.getElementById('rr').value=0;  }
+    else                        { simData.compliance=50;  simData.resistance=5;  simData.leak=0;   document.getElementById('rr').value=14; }
+
+    syncLabels();
+}
+
+function syncLabels() {
+    document.getElementById('vtVal').innerText   = document.getElementById('vt').value;
+    document.getElementById('piVal').innerText   = document.getElementById('pi').value;
+    document.getElementById('rrVal').innerText   = document.getElementById('rr').value;
+    document.getElementById('peepVal').innerText = document.getElementById('peep').value;
+}
+
+// ============================================================
+//  CHARTS
+// ============================================================
+function makeChart(id, color, min, max) {
+    const ctx = document.getElementById(id).getContext('2d');
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Array(60).fill(''),
+            datasets: [{
+                data: Array(60).fill(0),
+                borderColor: color, borderWidth: 2,
+                pointRadius: 0, fill: false, tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { min, max, grid: { color: '#111' }, ticks: { display: false } },
+                x: { display: false }
+            }
+        }
+    });
+    return charts[id];
+}
+
+function setupCharts() {
+    makeChart('pChart', '#00ff88', 0,   60);
+    makeChart('fChart', '#ffd600', -60, 60);
+    makeChart('vChart', '#00e5ff', 0,   900);
+    runEngine();
+}
+
+function pushVal(chart, val) {
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[0].data.push(val);
+    chart.update('none');
+}
+
+// ============================================================
+//  SIMULATION ENGINE
+// ============================================================
+function runEngine() {
+    if (!simData.active) return;
+
+    const mode = document.getElementById('modeSelect').value;
+    const vt   = +document.getElementById('vt').value;
+    const rr   = +document.getElementById('rr').value;
+    const pi   = +document.getElementById('pi').value;
+    const peep = +document.getElementById('peep').value;
+
+    const isVC  = mode.includes('VC') || mode === 'SIMV';
+    const peak  = isVC ? (vt / simData.compliance) + simData.resistance + peep : pi + peep;
+    const vte   = isVC ? Math.max(0, vt - simData.leak) : pi * simData.compliance;
+
+    const speed = rr > 0 ? rr / 12 : 0;
+    const phase = speed > 0 ? Math.sin(Date.now() * 0.005 * speed) : 0;
+
+    const p = phase > 0 ? peak  * Math.pow(phase, 0.4) : peep;
+    const f = phase > 0 ? 60    * phase : (phase < 0 ? -40 * Math.exp(phase) : 0);
+    const v = phase > 0 ? vte   * phase : 0;
+
+    pushVal(charts.pChart, p);
+    pushVal(charts.fChart, f);
+    pushVal(charts.vChart, v);
+
+    document.getElementById('monPeak').innerText = Math.round(peak);
+    document.getElementById('monPeak').style.color = peak > 35 ? 'var(--red)' : 'var(--green)';
+    document.getElementById('monVte').innerText  = Math.round(vte);
+    document.getElementById('monFlow').innerText = Math.round(f);
+
+    requestAnimationFrame(runEngine);
+}
+</script>
+</body>
+</html>

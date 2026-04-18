@@ -1,0 +1,16 @@
+{
+  "name": "Critical Care Heroes Simulator",
+  "short_name": "ICU Heroes",
+  "description": "نظام محاكاة الرعاية الحرجة - Critical Care Training",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#05080a",
+  "theme_color": "#00e5ff",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
